@@ -1,0 +1,22 @@
+name: Megamind Readiness
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - feat/megamind-execution-body
+
+permissions:
+  contents: read
+
+jobs:
+  structural-readiness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run zero-secret Megamind health check
+        run: python scripts/megamind_healthcheck.py
