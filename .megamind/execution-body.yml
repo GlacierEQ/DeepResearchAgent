@@ -1,0 +1,55 @@
+schema_version: 1
+body_id: deep-research-agent
+control_plane: GlacierEQ/Pro-Mastermind
+identity_rule: DeepResearchAgent supplies planning and research execution; Sherlock, Core Think, Supernova, and Microwave retain enduring specialist identity.
+repository: GlacierEQ/DeepResearchAgent
+upstream_repository: SkyworkAI/DeepResearchAgent
+runtime:
+  language: python
+  minimum_version: '3.11'
+  working_directory: .
+setup:
+  - make install-requirements
+  - playwright install chromium --with-deps --no-shell
+healthcheck:
+  command: python scripts/megamind_healthcheck.py
+launch:
+  command: python main.py
+  stop_strategy: process_signal
+interfaces:
+  - command_line
+  - mcp_client
+  - browser_use
+capabilities:
+  - hierarchical_planning
+  - deep_research
+  - browser_operation
+  - tool_calling
+  - sandboxed_python
+  - local_model_routing
+agent_mounts:
+  primary:
+    - stealth-sherlock-alpha
+    - core-think
+    - stealth-supernova
+    - stealth-microwave
+security:
+  trust_boundary: network_and_code_execution_sandbox_required
+  secrets: environment_only_never_commit
+  browser_profile: isolated_ephemeral_preferred
+  python_tooling: preserve_import_and_resource_limits
+receipts:
+  required_fields:
+    - body_id
+    - source_revision
+    - mission_id
+    - research_question
+    - source_uris
+    - source_retrieved_at
+    - artifact_hashes
+    - unresolved_conflicts
+    - exit_status
+readiness:
+  static_check: scripts/megamind_healthcheck.py
+  runtime_verified: false
+  truth_note: Static readiness can be verified without credentials. Full readiness requires dependencies, browser installation, provider or local-model configuration, and a successful bounded research smoke test.
