@@ -18,6 +18,7 @@ import base64
 import json
 import pickle
 import re
+import secrets
 import time
 from io import BytesIO
 from pathlib import Path
@@ -31,6 +32,10 @@ from src.tools.executor.local_python_executor import PythonExecutor
 from src.logger import LogLevel
 from src.tools.tools import get_tools_definition_code
 from src.exception import AgentError
+
+
+RESULT_ENVELOPE_PREFIX = "RESULT_JSON:"
+MAX_RESULT_ENVELOPE_BYTES = 1_000_000
 
 try:
     from dotenv import load_dotenv
@@ -299,10 +304,12 @@ class DockerExecutor(RemotePythonExecutor):
                 if match:
                     pre_final_answer_code = self.final_answer_pattern.sub("", code_action)
                     result_expr = match.group(1)
+                    result_nonce = secrets.token_urlsafe(24)
                     wrapped_code = pre_final_answer_code + dedent(f"""
-                        import pickle, base64
+                        import base64, json
                         _result = {result_expr}
-                        print("RESULT_PICKLE:" + base64.b64encode(pickle.dumps(_result)).decode())
+                        _result_json = json.dumps(_result, default=repr, separators=(",", ":"))
+                        print("{RESULT_ENVELOPE_PREFIX}{result_nonce}:" + base64.b64encode(_result_json.encode("utf-8")).decode("ascii"))
                         """)
             else:
                 wrapped_code = code_action
@@ -326,9 +333,20 @@ class DockerExecutor(RemotePythonExecutor):
 
                 if msg_type == "stream":
                     text = msg["content"]["text"]
-                    if return_final_answer and text.startswith("RESULT_PICKLE:"):
-                        pickle_data = text[len("RESULT_PICKLE:") :].strip()
-                        result = pickle.loads(base64.b64decode(pickle_data))
+                    result_prefix = (
+                        f"{RESULT_ENVELOPE_PREFIX}{result_nonce}:"
+                        if return_final_answer and "result_nonce" in locals()
+                        else None
+                    )
+                    if result_prefix and text.startswith(result_prefix):
+                        result_data = text[len(result_prefix) :].strip()
+                        decoded_result = base64.b64decode(result_data, validate=True)
+                        if len(decoded_result) > MAX_RESULT_ENVELOPE_BYTES:
+                            raise AgentError(
+                                "Executor result exceeded the maximum JSON envelope size.",
+                                self.logger,
+                            )
+                        result = json.loads(decoded_result.decode("utf-8"))
                         waiting_for_idle = True
                     else:
                         outputs.append(text)
